@@ -1,0 +1,1 @@
+{"version":3,"file":"ReportModel.d.ts","sourceRoot":"","sources":["../../src/models/ReportModel.ts"],"names":[],"mappings":"AACA,OAAO,EACL,kBAAkB,EAClB,qBAAqB,EAMtB,MAAM,UAAU,CAAC;AAUlB,qBAAa,WAAW;IAChB,iBAAiB,CAAC,OAAO,EAAE,qBAAqB,GAAG,OAAO,CAAC,kBAAkB,CAAC;CA0SrF"}
