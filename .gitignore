@@ -12,6 +12,16 @@ node_modules/
 # Environment variables
 .env
 
+# Build output (regenerated on deploy)
+dist/
+
+# Development tools
+.gemini/
+.taskmaster/
+
+# Debug output files
+*_output.txt
+
 # Editor directories and files
 .idea
 .vscode
@@ -23,3 +33,6 @@ node_modules/
 
 # OS specific
 .DS_Store
+
+# Uploads (handled separately in production)
+uploads/
