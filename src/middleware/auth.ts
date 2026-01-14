@@ -23,7 +23,11 @@ const allowMockTokens = process.env.ALLOW_MOCK_TOKENS === 'true' || process.env.
 export const authenticateToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    // Tentar pegar token do header OU da query string (para downloads diretos)
+    let token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    if (!token && req.query.token) {
+      token = req.query.token as string;
+    }
 
     if (!token) {
       res.status(401).json({
@@ -55,10 +59,10 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
     // Verificar e decodificar o token
     const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
-    
+
     // Buscar o usuário no banco para verificar se ainda existe e está ativo
     const userResult = await userModel.findById(decoded.user_id);
-    
+
     if (!userResult.success || !userResult.data) {
       res.status(401).json({
         success: false,
@@ -68,7 +72,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     }
 
     const user = userResult.data;
-    
+
     if (user.status !== 'Ativo') {
       res.status(401).json({
         success: false,
@@ -87,7 +91,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     next();
   } catch (error) {
     console.error('Erro na autenticação:', error);
-    
+
     if (error instanceof jwt.JsonWebTokenError) {
       res.status(401).json({
         success: false,
@@ -95,7 +99,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       });
       return;
     }
-    
+
     if (error instanceof jwt.TokenExpiredError) {
       res.status(401).json({
         success: false,
