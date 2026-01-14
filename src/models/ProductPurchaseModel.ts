@@ -8,15 +8,11 @@ export interface ProductPurchase {
     quantity: number;
     total_amount: number;
     purchase_date: string;
-    is_installment: boolean;
-    installment_count: number;
+    is_term: boolean;  // A prazo
+    payment_date?: string | null;  // Data do pagamento (para compras a prazo)
     notes?: string;
     created_at: string;
     updated_at?: string;
-    // Computed fields
-    paid_amount?: number;
-    pending_amount?: number;
-    installments?: PurchaseInstallment[];
 }
 
 export interface PurchaseInstallment {
@@ -36,8 +32,8 @@ export interface CreatePurchaseData {
     unit_price: number;
     quantity: number;
     purchase_date?: string;
-    is_installment?: boolean;
-    installment_count?: number;
+    is_term?: boolean;
+    payment_date?: string | null;
     notes?: string;
 }
 
@@ -55,13 +51,12 @@ export class ProductPurchaseModel {
 
             // Calculate total amount
             const totalAmount = data.unit_price * data.quantity;
-            const isInstallment = data.is_installment || false;
-            const installmentCount = isInstallment ? (data.installment_count || 1) : 1;
+            const isTerm = data.is_term || false;
 
             // Insert purchase
             const purchaseResult = await client.query(`
                 INSERT INTO product_purchases 
-                (product_id, unit_price, quantity, total_amount, purchase_date, is_installment, installment_count, notes)
+                (product_id, unit_price, quantity, total_amount, purchase_date, is_term, payment_date, notes)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING *
             `, [
@@ -70,29 +65,12 @@ export class ProductPurchaseModel {
                 data.quantity,
                 totalAmount,
                 data.purchase_date || new Date().toISOString().split('T')[0],
-                isInstallment,
-                installmentCount,
+                isTerm,
+                data.payment_date || null,
                 data.notes || null
             ]);
 
             const purchase = purchaseResult.rows[0];
-
-            // If installment, create installment records
-            if (isInstallment && installmentCount > 1) {
-                const installmentAmount = Math.round((totalAmount / installmentCount) * 100) / 100;
-                const purchaseDate = new Date(purchase.purchase_date);
-
-                for (let i = 1; i <= installmentCount; i++) {
-                    const dueDate = new Date(purchaseDate);
-                    dueDate.setMonth(dueDate.getMonth() + i);
-
-                    await client.query(`
-                        INSERT INTO purchase_installments 
-                        (purchase_id, installment_number, due_date, amount, status)
-                        VALUES ($1, $2, $3, $4, 'Pendente')
-                    `, [purchase.id, i, dueDate.toISOString().split('T')[0], installmentAmount]);
-                }
-            }
 
             await client.query('COMMIT');
             return purchase;
