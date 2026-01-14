@@ -181,7 +181,7 @@ router.put('/:id',
   async (req: Request, res: Response): Promise<void> => {
     try {
       const id = parseInt(req.params.id);
-      
+
       // Não permitir que o usuário desative a si mesmo
       if (id === req.user!.id && req.body.status === 'Inativo') {
         res.status(400).json({
@@ -212,7 +212,7 @@ router.delete('/:id',
   async (req: Request, res: Response): Promise<void> => {
     try {
       const id = parseInt(req.params.id);
-      
+
       // Não permitir que o usuário delete a si mesmo
       if (id === req.user!.id) {
         res.status(400).json({
@@ -324,10 +324,10 @@ router.put('/:id/password',
       // Verificar senha atual (apenas se não for admin alterando senha de outro)
       if (id === req.user!.id) {
         const isCurrentPasswordValid = await userModel.verifyPassword(
-          current_password, 
+          current_password,
           userResult.data.password_hash!
         );
-        
+
         if (!isCurrentPasswordValid) {
           res.status(400).json({
             success: false,
@@ -339,7 +339,7 @@ router.put('/:id/password',
 
       // Atualizar senha
       const result = await userModel.update(id, { password: new_password });
-      
+
       if (result.success) {
         res.json({
           success: true,
@@ -350,6 +350,65 @@ router.put('/:id/password',
       }
     } catch (error) {
       console.error('Erro ao alterar senha:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
+    }
+  }
+);
+
+// PUT /users/:id/reset-password - Admin resetar senha de usuário
+router.put('/:id/reset-password',
+  requireAuth,
+  requireAdmin,
+  validateId,
+  activityLogger('Redefiniu senha do usuário', 'users'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = parseInt(req.params.id);
+      const { new_password } = req.body;
+
+      // Validar nova senha
+      if (!new_password) {
+        res.status(400).json({
+          success: false,
+          error: 'Nova senha é obrigatória'
+        });
+        return;
+      }
+
+      if (new_password.length < 6) {
+        res.status(400).json({
+          success: false,
+          error: 'Senha deve ter pelo menos 6 caracteres'
+        });
+        return;
+      }
+
+      // Verificar se usuário existe
+      const userCheck = await userModel.findById(id);
+      if (!userCheck.success || !userCheck.data) {
+        res.status(404).json({
+          success: false,
+          error: 'Usuário não encontrado'
+        });
+        return;
+      }
+
+      // Atualizar senha
+      const result = await userModel.update(id, { password: new_password });
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: 'Senha redefinida com sucesso'
+        });
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Erro ao redefinir senha:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor'
