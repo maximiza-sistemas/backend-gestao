@@ -7,6 +7,7 @@ import { createLimiter, updateLimiter } from '../middleware/rateLimit';
 import { activityLogger } from '../middleware/logger';
 import { uploadReceipt, getReceiptPath } from '../middleware/upload';
 import path from 'path';
+import fs from 'fs';
 
 const router = Router();
 const orderModel = new OrderModel();
@@ -468,12 +469,33 @@ router.get('/:id/payments/:paymentId/receipt',
       }
 
       const filePath = getReceiptPath(payment.receipt_file);
-      res.sendFile(filePath);
-    } catch (error) {
+
+      // Verificar se o arquivo existe antes de enviar
+      if (!fs.existsSync(filePath)) {
+        console.error('Arquivo de comprovante não encontrado:', filePath);
+        res.status(404).json({
+          success: false,
+          error: `Arquivo de comprovante não encontrado no servidor. O arquivo pode ter sido perdido durante uma atualização do sistema. Por favor, faça o upload novamente.`
+        });
+        return;
+      }
+
+      res.sendFile(filePath, (err) => {
+        if (err) {
+          console.error('Erro ao enviar arquivo de comprovante:', err);
+          if (!res.headersSent) {
+            res.status(500).json({
+              success: false,
+              error: 'Erro ao enviar arquivo de comprovante'
+            });
+          }
+        }
+      });
+    } catch (error: any) {
       console.error('Erro ao buscar comprovante:', error);
       res.status(500).json({
         success: false,
-        error: 'Erro interno do servidor'
+        error: error.message || 'Erro interno do servidor'
       });
     }
   }
