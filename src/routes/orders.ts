@@ -5,6 +5,8 @@ import { requireAuth } from '../middleware/auth';
 import { validate, orderSchemas, validateId, validatePagination } from '../middleware/validation';
 import { createLimiter, updateLimiter } from '../middleware/rateLimit';
 import { activityLogger } from '../middleware/logger';
+import { uploadReceipt, getReceiptPath } from '../middleware/upload';
+import path from 'path';
 
 const router = Router();
 const orderModel = new OrderModel();
@@ -374,38 +376,98 @@ router.post('/:id/payments',
   createLimiter,
   activityLogger('Registrou pagamento', 'order_payments'),
   async (req: Request, res: Response): Promise<void> => {
+    // Usar middleware de upload dentro do handler
+    uploadReceipt(req, res, async (err: any) => {
+      try {
+        if (err) {
+          res.status(400).json({
+            success: false,
+            error: err.message || 'Erro ao fazer upload do comprovante'
+          });
+          return;
+        }
+
+        const orderId = parseInt(req.params.id);
+        const { amount, payment_method, notes, payment_date } = req.body;
+
+        if (!amount || parseFloat(amount) <= 0) {
+          res.status(400).json({
+            success: false,
+            error: 'Valor do pagamento deve ser maior que zero'
+          });
+          return;
+        }
+
+        if (!['Dinheiro', 'Pix', 'Cartão', 'Transferência', 'Depósito'].includes(payment_method)) {
+          res.status(400).json({
+            success: false,
+            error: 'Método de pagamento inválido'
+          });
+          return;
+        }
+
+        // Obter o nome do arquivo do comprovante, se enviado
+        const receiptFile = req.file ? req.file.filename : null;
+
+        const result = await orderPaymentModel.create({
+          order_id: orderId,
+          amount: parseFloat(amount),
+          payment_method,
+          notes,
+          user_id: req.user?.id,
+          payment_date,
+          receipt_file: receiptFile || undefined
+        });
+
+        res.status(result.success ? 201 : 400).json(result);
+      } catch (error) {
+        console.error('Erro ao registrar pagamento:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Erro interno do servidor'
+        });
+      }
+    });
+  }
+);
+
+// GET /orders/:id/payments/:paymentId/receipt - Download do comprovante
+router.get('/:id/payments/:paymentId/receipt',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
     try {
-      const orderId = parseInt(req.params.id);
-      const { amount, payment_method, notes, payment_date } = req.body;
+      const paymentId = parseInt(req.params.paymentId);
 
-      if (!amount || amount <= 0) {
+      if (isNaN(paymentId)) {
         res.status(400).json({
           success: false,
-          error: 'Valor do pagamento deve ser maior que zero'
+          error: 'ID do pagamento inválido'
         });
         return;
       }
 
-      if (!['Dinheiro', 'Pix', 'Cartão', 'Transferência', 'Depósito'].includes(payment_method)) {
-        res.status(400).json({
+      const result = await orderPaymentModel.findById(paymentId);
+      if (!result.success || !result.data) {
+        res.status(404).json({
           success: false,
-          error: 'Método de pagamento inválido'
+          error: 'Pagamento não encontrado'
         });
         return;
       }
 
-      const result = await orderPaymentModel.create({
-        order_id: orderId,
-        amount,
-        payment_method,
-        notes,
-        user_id: req.user?.id,
-        payment_date
-      });
+      const payment = result.data;
+      if (!payment.receipt_file) {
+        res.status(404).json({
+          success: false,
+          error: 'Comprovante não encontrado'
+        });
+        return;
+      }
 
-      res.status(result.success ? 201 : 400).json(result);
+      const filePath = getReceiptPath(payment.receipt_file);
+      res.sendFile(filePath);
     } catch (error) {
-      console.error('Erro ao registrar pagamento:', error);
+      console.error('Erro ao buscar comprovante:', error);
       res.status(500).json({
         success: false,
         error: 'Erro interno do servidor'

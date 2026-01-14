@@ -8,6 +8,7 @@ interface CreatePaymentRequest {
     notes?: string;
     user_id?: number;
     payment_date?: string;
+    receipt_file?: string; // Nome do arquivo do comprovante
 }
 
 export class OrderPaymentModel extends BaseModel {
@@ -47,8 +48,8 @@ export class OrderPaymentModel extends BaseModel {
             // Inserir pagamento
             const paymentDate = paymentData.payment_date || new Date().toISOString().split('T')[0];
             const result = await this.customQuery(
-                `INSERT INTO order_payments (order_id, amount, payment_method, notes, user_id, payment_date)
-         VALUES ($1, $2, $3, $4, $5, $6)
+                `INSERT INTO order_payments (order_id, amount, payment_method, notes, user_id, payment_date, receipt_file)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
                 [
                     paymentData.order_id,
@@ -56,7 +57,8 @@ export class OrderPaymentModel extends BaseModel {
                     paymentData.payment_method,
                     paymentData.notes || null,
                     paymentData.user_id || null,
-                    paymentDate
+                    paymentDate,
+                    paymentData.receipt_file || null
                 ]
             );
 
