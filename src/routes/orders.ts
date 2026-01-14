@@ -380,6 +380,7 @@ router.post('/:id/payments',
     uploadReceipt(req, res, async (err: any) => {
       try {
         if (err) {
+          console.error('Erro no upload:', err);
           res.status(400).json({
             success: false,
             error: err.message || 'Erro ao fazer upload do comprovante'
@@ -389,6 +390,8 @@ router.post('/:id/payments',
 
         const orderId = parseInt(req.params.id);
         const { amount, payment_method, notes, payment_date } = req.body;
+
+        console.log('Dados recebidos:', { orderId, amount, payment_method, notes, payment_date, hasFile: !!req.file });
 
         if (!amount || parseFloat(amount) <= 0) {
           res.status(400).json({
