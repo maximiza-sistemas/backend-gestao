@@ -18,7 +18,13 @@ export class ProductModel extends BaseModel {
            ORDER BY pp.purchase_date DESC, pp.created_at DESC 
            LIMIT 1),
           p.price_buy
-        ) as price_buy
+        ) as price_buy,
+        (SELECT pp.purchase_date 
+         FROM product_purchases pp 
+         WHERE pp.product_id = p.id 
+         ORDER BY pp.purchase_date DESC, pp.created_at DESC 
+         LIMIT 1
+        ) as last_purchase_date
       FROM products p
       WHERE p.status = $1 
       ORDER BY p.name
