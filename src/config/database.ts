@@ -1,7 +1,13 @@
-import { Pool, PoolConfig } from 'pg';
+import { Pool, PoolConfig, types } from 'pg';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// Configurar node-postgres para retornar datas como strings (evita problemas de timezone)
+// Tipo 1082 = DATE, Tipo 1114 = TIMESTAMP WITHOUT TIME ZONE, Tipo 1184 = TIMESTAMP WITH TIME ZONE
+types.setTypeParser(1082, (val: string) => val); // DATE - retorna como string YYYY-MM-DD
+types.setTypeParser(1114, (val: string) => val); // TIMESTAMP WITHOUT TIMEZONE
+types.setTypeParser(1184, (val: string) => val); // TIMESTAMP WITH TIMEZONE
 
 const dbConfig: PoolConfig = {
   host: process.env.DB_HOST,
