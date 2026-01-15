@@ -18,6 +18,11 @@ const dbConfig: PoolConfig = {
 // Pool de conexões
 export const pool = new Pool(dbConfig);
 
+// Configurar timezone para cada nova conexão
+pool.on('connect', (client) => {
+  client.query("SET timezone = 'America/Sao_Paulo'");
+});
+
 // Função para testar a conexão
 export const testConnection = async (): Promise<boolean> => {
   try {
