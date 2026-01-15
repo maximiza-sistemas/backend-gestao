@@ -112,21 +112,35 @@ export class OrderModel extends BaseModel {
           items.push(itemResult.rows[0]);
 
           // Criar movimentação de estoque (saída)
-          const stockMovementQuery = `
-            INSERT INTO stock_movements (product_id, location_id, order_id, movement_type, bottle_type, quantity, reason, user_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          `;
+          // Determinar location_id: usar o fornecido ou buscar a primeira localização ativa
+          let movementLocationId = orderData.location_id;
+          if (!movementLocationId) {
+            const locationResult = await client.query(
+              "SELECT id FROM locations WHERE status = 'Ativo' ORDER BY id LIMIT 1"
+            );
+            if (locationResult.rows.length > 0) {
+              movementLocationId = locationResult.rows[0].id;
+            }
+          }
 
-          await client.query(stockMovementQuery, [
-            item.product_id,
-            orderData.location_id || 1, // Default para primeira localização se não especificada
-            order.id,
-            'Saída',
-            'Cheio', // Assume que é saída de botijões cheios
-            item.quantity,
-            `Venda - Pedido #${order.id}`,
-            orderData.user_id
-          ]);
+          // Só criar movimentação se tiver uma localização válida
+          if (movementLocationId) {
+            const stockMovementQuery = `
+              INSERT INTO stock_movements (product_id, location_id, order_id, movement_type, bottle_type, quantity, reason, user_id) 
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `;
+
+            await client.query(stockMovementQuery, [
+              item.product_id,
+              movementLocationId,
+              order.id,
+              'Saída',
+              'Cheio', // Assume que é saída de botijões cheios
+              item.quantity,
+              `Venda - Pedido #${order.id}`,
+              orderData.user_id
+            ]);
+          }
         }
 
         return {
