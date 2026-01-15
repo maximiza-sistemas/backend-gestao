@@ -24,7 +24,14 @@ export class ProductModel extends BaseModel {
          WHERE pp.product_id = p.id 
          ORDER BY pp.purchase_date DESC, pp.created_at DESC 
          LIMIT 1
-        ) as last_purchase_date
+        ) as last_purchase_date,
+        (SELECT l.name 
+         FROM product_purchases pp 
+         LEFT JOIN locations l ON pp.location_id = l.id
+         WHERE pp.product_id = p.id 
+         ORDER BY pp.purchase_date DESC, pp.created_at DESC 
+         LIMIT 1
+        ) as last_purchase_location
       FROM products p
       WHERE p.status = $1 
       ORDER BY p.name
