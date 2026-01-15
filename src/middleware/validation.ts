@@ -304,7 +304,7 @@ export const financialSchemas = {
 export const validatePagination = (req: Request, res: Response, next: NextFunction): void => {
   const schema = Joi.object({
     page: Joi.number().integer().min(1).default(1),
-    limit: Joi.number().integer().min(1).max(100).default(50),
+    limit: Joi.number().integer().min(1).max(500).default(50),
     sort: Joi.string().max(50),
     order: Joi.string().valid('ASC', 'DESC').default('ASC'),
     search: Joi.string().max(100).allow('')
