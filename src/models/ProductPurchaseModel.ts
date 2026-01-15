@@ -53,11 +53,11 @@ export class ProductPurchaseModel {
             const totalAmount = data.unit_price * data.quantity;
             const isTerm = data.is_term || false;
 
-            // Insert purchase
+            // Insert purchase - usando is_installment (campo original da tabela)
             const purchaseResult = await client.query(`
                 INSERT INTO product_purchases 
-                (product_id, unit_price, quantity, total_amount, purchase_date, is_term, payment_date, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (product_id, unit_price, quantity, total_amount, purchase_date, is_installment, notes)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING *
             `, [
                 data.product_id,
@@ -66,7 +66,6 @@ export class ProductPurchaseModel {
                 totalAmount,
                 data.purchase_date || new Date().toISOString().split('T')[0],
                 isTerm,
-                data.payment_date || null,
                 data.notes || null
             ]);
 
@@ -90,7 +89,7 @@ export class ProductPurchaseModel {
                 p.name as product_name,
                 COALESCE(
                     (SELECT SUM(pi.paid_amount) FROM purchase_installments pi WHERE pi.purchase_id = pp.id),
-                    CASE WHEN pp.is_term = false THEN pp.total_amount ELSE 0 END
+                    CASE WHEN pp.is_installment = false THEN pp.total_amount ELSE 0 END
                 ) as paid_amount
             FROM product_purchases pp
             JOIN products p ON pp.product_id = p.id
