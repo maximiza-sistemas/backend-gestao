@@ -56,18 +56,28 @@ export class ProductPurchaseModel {
             const totalAmount = data.unit_price * data.quantity;
             const isTerm = data.is_term || false;
 
+            // Gerar data local para fallback (evita problemas de timezone)
+            const getLocalDate = () => {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
             // Insert purchase - usando is_installment (campo original da tabela)
+            // Usando ::DATE cast explícito para garantir interpretação correta
             const purchaseResult = await client.query(`
                 INSERT INTO product_purchases 
                 (product_id, unit_price, quantity, total_amount, purchase_date, is_installment, location_id, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                VALUES ($1, $2, $3, $4, $5::DATE, $6, $7, $8)
                 RETURNING *
             `, [
                 data.product_id,
                 data.unit_price,
                 data.quantity,
                 totalAmount,
-                data.purchase_date || new Date().toISOString().split('T')[0],
+                data.purchase_date || getLocalDate(),
                 isTerm,
                 data.location_id || null,
                 data.notes || null
