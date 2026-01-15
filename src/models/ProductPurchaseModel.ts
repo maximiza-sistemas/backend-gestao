@@ -90,7 +90,7 @@ export class ProductPurchaseModel {
                 p.name as product_name,
                 COALESCE(
                     (SELECT SUM(pi.paid_amount) FROM purchase_installments pi WHERE pi.purchase_id = pp.id),
-                    CASE WHEN pp.is_installment = false THEN pp.total_amount ELSE 0 END
+                    CASE WHEN pp.is_term = false THEN pp.total_amount ELSE 0 END
                 ) as paid_amount
             FROM product_purchases pp
             JOIN products p ON pp.product_id = p.id
