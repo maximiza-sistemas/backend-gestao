@@ -4,6 +4,8 @@ export interface ProductPurchase {
     id: number;
     product_id: number;
     product_name?: string;
+    location_id?: number | null;  // Empresa/Filial que realizou a compra
+    location_name?: string;  // Nome da empresa/filial
     unit_price: number;
     quantity: number;
     total_amount: number;
@@ -34,6 +36,7 @@ export interface CreatePurchaseData {
     purchase_date?: string;
     is_term?: boolean;
     payment_date?: string | null;
+    location_id?: number | null;  // Empresa/Filial que realizou a compra
     notes?: string;
 }
 
@@ -56,8 +59,8 @@ export class ProductPurchaseModel {
             // Insert purchase - usando is_installment (campo original da tabela)
             const purchaseResult = await client.query(`
                 INSERT INTO product_purchases 
-                (product_id, unit_price, quantity, total_amount, purchase_date, is_installment, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (product_id, unit_price, quantity, total_amount, purchase_date, is_installment, location_id, notes)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING *
             `, [
                 data.product_id,
@@ -66,6 +69,7 @@ export class ProductPurchaseModel {
                 totalAmount,
                 data.purchase_date || new Date().toISOString().split('T')[0],
                 isTerm,
+                data.location_id || null,
                 data.notes || null
             ]);
 
@@ -87,12 +91,14 @@ export class ProductPurchaseModel {
             SELECT 
                 pp.*,
                 p.name as product_name,
+                l.name as location_name,
                 COALESCE(
                     (SELECT SUM(pi.paid_amount) FROM purchase_installments pi WHERE pi.purchase_id = pp.id),
                     CASE WHEN pp.is_installment = false THEN pp.total_amount ELSE 0 END
                 ) as paid_amount
             FROM product_purchases pp
             JOIN products p ON pp.product_id = p.id
+            LEFT JOIN locations l ON pp.location_id = l.id
             WHERE pp.product_id = $1
             ORDER BY pp.purchase_date DESC, pp.created_at DESC
         `, [productId]);
