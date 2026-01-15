@@ -191,6 +191,8 @@ router.post('/',
         description,
         weight_kg,
         status,
+        // Campo de localização (filial selecionada)
+        location_id,
         // Campos de estoque inicial
         initial_full_quantity,
         initial_empty_quantity,
@@ -220,58 +222,60 @@ router.post('/',
       const result = await productModel.create(productData);
 
       if (result.success && result.data) {
-        // Criar registros de estoque automaticamente para todas as localizações ativas
+        // Criar registro de estoque apenas para a localização selecionada
         try {
           const productId = result.data.id;
 
-          // Buscar todas as localizações ativas
-          const locationsResult = await query(
-            'SELECT id, name FROM locations WHERE status = $1 ORDER BY id',
-            ['Ativo']
-          );
-
-          // Se não houver localizações, criar uma padrão
-          if (locationsResult.rows.length === 0) {
-            const newLocation = await query(
-              `INSERT INTO locations (name, status) VALUES ($1, $2) RETURNING id, name`,
-              ['Matriz', 'Ativo']
-            );
-            locationsResult.rows.push(newLocation.rows[0]);
-          }
-
-          // Preparar valores de estoque inicial (apenas para a primeira localização - Matriz)
+          // Preparar valores de estoque inicial
           const fullQty = initial_full_quantity ? parseInt(initial_full_quantity) : 0;
           const emptyQty = initial_empty_quantity ? parseInt(initial_empty_quantity) : 0;
           const maintenanceQty = initial_maintenance_quantity ? parseInt(initial_maintenance_quantity) : 0;
           const minStock = min_stock_level ? parseInt(min_stock_level) : 10;
           const maxStock = max_stock_level ? parseInt(max_stock_level) : 100;
 
-          // Criar registro de estoque para cada localização
-          // IMPORTANTE: Apenas a PRIMEIRA localização (Matriz) recebe a quantidade inicial
-          // As demais localizações recebem estoque zerado
-          for (let i = 0; i < locationsResult.rows.length; i++) {
-            const location = locationsResult.rows[i];
-            const isFirstLocation = i === 0; // Apenas a primeira localização recebe o estoque inicial
+          let targetLocationId: number | null = null;
 
-            await query(
-              `INSERT INTO stock (product_id, location_id, full_quantity, empty_quantity, maintenance_quantity, min_stock_level, max_stock_level)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (product_id, location_id) DO NOTHING`,
-              [
-                productId,
-                location.id,
-                isFirstLocation ? fullQty : 0,
-                isFirstLocation ? emptyQty : 0,
-                isFirstLocation ? maintenanceQty : 0,
-                minStock,
-                maxStock
-              ]
+          // Se location_id foi fornecido, usar essa localização específica
+          if (location_id) {
+            targetLocationId = parseInt(location_id);
+          } else {
+            // Se não foi fornecido, buscar a primeira localização ativa (Matriz)
+            const locationsResult = await query(
+              'SELECT id FROM locations WHERE status = $1 ORDER BY id LIMIT 1',
+              ['Ativo']
             );
+
+            if (locationsResult.rows.length === 0) {
+              // Se não houver localizações, criar uma padrão
+              const newLocation = await query(
+                `INSERT INTO locations (name, status) VALUES ($1, $2) RETURNING id`,
+                ['Matriz', 'Ativo']
+              );
+              targetLocationId = newLocation.rows[0].id;
+            } else {
+              targetLocationId = locationsResult.rows[0].id;
+            }
           }
 
-          console.log(`Registros de estoque criados para produto ${productId} em ${locationsResult.rows.length} localização(ões). Estoque inicial (${fullQty} cheios, ${emptyQty} vazios, ${maintenanceQty} manutenção) adicionado apenas à primeira localização.`);
+          // Criar registro de estoque APENAS para a localização selecionada
+          await query(
+            `INSERT INTO stock (product_id, location_id, full_quantity, empty_quantity, maintenance_quantity, min_stock_level, max_stock_level)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (product_id, location_id) DO NOTHING`,
+            [
+              productId,
+              targetLocationId,
+              fullQty,
+              emptyQty,
+              maintenanceQty,
+              minStock,
+              maxStock
+            ]
+          );
+
+          console.log(`Registro de estoque criado para produto ${productId} na localização ${targetLocationId}. Estoque inicial: ${fullQty} cheios, ${emptyQty} vazios, ${maintenanceQty} manutenção.`);
         } catch (stockError) {
-          console.error('Erro ao criar registros de estoque:', stockError);
+          console.error('Erro ao criar registro de estoque:', stockError);
           // Não falha a criação do produto, apenas loga o erro
         }
 
