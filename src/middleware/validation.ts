@@ -203,7 +203,13 @@ export const orderSchemas = {
       'array.min': 'Pelo menos um item deve ser incluído no pedido',
       'any.required': 'Itens do pedido são obrigatórios'
     }),
-    status: Joi.string().valid('Pendente', 'Em Rota', 'Entregue', 'Cancelado').default('Pendente')
+    status: Joi.string().valid('Pendente', 'Em Rota', 'Entregue', 'Cancelado').default('Pendente'),
+    // Campos adicionais do formulário simplificado
+    expenses: Joi.number().min(0).default(0),
+    gross_value: Joi.number().min(0),
+    net_value: Joi.number(),
+    payment_details: Joi.string().max(2000).allow(''),
+    receipt_file: Joi.any() // Arquivo de comprovante (tratado pelo multer)
   }),
 
   updateStatus: Joi.object({
