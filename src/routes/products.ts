@@ -566,7 +566,7 @@ router.post('/:id/purchases',
   async (req: Request, res: Response): Promise<void> => {
     try {
       const id = parseInt(req.params.id);
-      const { unit_price, quantity, purchase_date, is_term, payment_date, notes } = req.body;
+      const { unit_price, quantity, purchase_date, is_term, payment_date, location_id, notes } = req.body;
 
       if (!unit_price || unit_price <= 0) {
         res.status(400).json({
@@ -591,6 +591,7 @@ router.post('/:id/purchases',
         purchase_date,
         is_term: is_term || false,
         payment_date: payment_date || null,
+        location_id: location_id ? parseInt(location_id) : null,
         notes
       });
 
