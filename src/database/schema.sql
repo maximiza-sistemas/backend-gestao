@@ -382,6 +382,11 @@ CREATE TRIGGER update_payables_updated_at BEFORE UPDATE ON payables FOR EACH ROW
 CREATE OR REPLACE FUNCTION update_stock_on_movement()
 RETURNS TRIGGER AS $$
 BEGIN
+    -- Garantir que existe um registro de estoque para o produto/localização (UPSERT)
+    INSERT INTO stock (product_id, location_id, full_quantity, empty_quantity, maintenance_quantity)
+    VALUES (NEW.product_id, NEW.location_id, 0, 0, 0)
+    ON CONFLICT (product_id, location_id) DO NOTHING;
+
     IF NEW.movement_type = 'Entrada' THEN
         IF NEW.bottle_type = 'Cheio' THEN
             UPDATE stock SET full_quantity = full_quantity + NEW.quantity WHERE product_id = NEW.product_id AND location_id = NEW.location_id;
