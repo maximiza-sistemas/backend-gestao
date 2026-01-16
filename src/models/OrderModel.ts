@@ -642,6 +642,55 @@ export class OrderModel extends BaseModel {
     }
   }
 
+  // Deletar pedido com cascata manual para tabelas que não têm ON DELETE CASCADE
+  async delete(id: number): Promise<ApiResponse> {
+    return await this.executeTransaction(async (client) => {
+      try {
+        // Verificar se o pedido existe
+        const orderResult = await client.query('SELECT * FROM orders WHERE id = $1', [id]);
+        if (orderResult.rows.length === 0) {
+          throw new Error('Pedido não encontrado');
+        }
+
+        const order = orderResult.rows[0];
+
+        // Verificar se o pedido pode ser deletado (apenas Pendente)
+        if (order.status !== 'Pendente') {
+          throw new Error('Apenas pedidos pendentes podem ser deletados');
+        }
+
+        // 1. Deletar movimentações de estoque relacionadas
+        await client.query('DELETE FROM stock_movements WHERE order_id = $1', [id]);
+
+        // 2. Deletar contas a receber relacionadas
+        await client.query('DELETE FROM receivables WHERE order_id = $1', [id]);
+
+        // 3. Limpar referências em route_stops (SET NULL ao invés de DELETE)
+        await client.query('UPDATE route_stops SET order_id = NULL WHERE order_id = $1', [id]);
+
+        // 4. Limpar referências em product_maintenance (SET NULL ao invés de DELETE)
+        await client.query('UPDATE product_maintenance SET client_order_id = NULL WHERE client_order_id = $1', [id]);
+
+        // 5. Deletar pagamentos do pedido (order_payments já tem CASCADE, mas por segurança)
+        await client.query('DELETE FROM order_payments WHERE order_id = $1', [id]);
+
+        // 6. Deletar transações financeiras relacionadas
+        await client.query('DELETE FROM financial_transactions WHERE order_id = $1', [id]);
+
+        // 7. Deletar itens do pedido (order_items já tem CASCADE, mas por segurança)
+        await client.query('DELETE FROM order_items WHERE order_id = $1', [id]);
+
+        // 8. Finalmente, deletar o pedido
+        const deleteResult = await client.query('DELETE FROM orders WHERE id = $1 RETURNING *', [id]);
+
+        return deleteResult.rows[0];
+      } catch (error: any) {
+        console.error('Erro ao deletar pedido:', error);
+        throw error;
+      }
+    });
+  }
+
   // Atualizar desconto do pedido
   async updateDiscount(id: number, discount: number): Promise<ApiResponse> {
     try {
