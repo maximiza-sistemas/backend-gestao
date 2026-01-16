@@ -180,18 +180,8 @@ export const orderSchemas = {
         'any.required': 'Valor a prazo é obrigatório para pagamentos a Prazo ou Misto'
       })
     }),
-    payment_installments: Joi.number().integer().min(1).default(1).when('payment_method', {
-      is: Joi.alternatives().try('Prazo', 'Misto'),
-      then: Joi.number().integer().min(1).required().messages({
-        'any.required': 'Número de parcelas é obrigatório para pagamentos a Prazo ou Misto'
-      })
-    }),
-    payment_due_date: Joi.date().when('payment_method', {
-      is: Joi.alternatives().try('Prazo', 'Misto'),
-      then: Joi.date().required().messages({
-        'any.required': 'Data de vencimento é obrigatória para pagamentos a Prazo ou Misto'
-      })
-    }),
+    payment_installments: Joi.number().integer().min(1).default(1),
+    payment_due_date: Joi.date().allow(null),
     notes: Joi.string().max(1000).allow(''),
     items: Joi.array().items(
       Joi.object({
