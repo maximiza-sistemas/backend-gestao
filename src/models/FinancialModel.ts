@@ -288,33 +288,9 @@ export class FinancialModel {
 
             const transaction = result.rows[0];
 
-            // Se já nasce Pago, atualizar saldos
-            if (transaction.status === 'Pago') {
-                if (transaction.type === 'Receita') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance + $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                } else if (transaction.type === 'Despesa') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance - $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                } else if (transaction.type === 'Transferência' || transaction.type === 'Depósito') {
-                    // Debitar da origem
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance - $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                    // Creditar no destino
-                    if (transaction.destination_account_id) {
-                        await client.query(
-                            'UPDATE financial_accounts SET current_balance = current_balance + $1 WHERE id = $2',
-                            [transaction.amount, transaction.destination_account_id]
-                        );
-                    }
-                }
-            }
+            // NOTA: O trigger update_balance_after_transaction no banco de dados
+            // já atualiza automaticamente o saldo da conta quando uma transação é inserida
+            // NÃO fazer atualização manual aqui para evitar duplicação
 
             await client.query('COMMIT');
             return this.findTransactionById(transaction.id) as Promise<FinancialTransaction>;
@@ -390,57 +366,9 @@ export class FinancialModel {
             const params = paymentDate ? [status, paymentDate, id] : [status, id];
             await client.query(query, params);
 
-            // Lógica de atualização de saldo
-            // Se mudou de Pendente/Vencido para Pago
-            if (oldStatus !== 'Pago' && status === 'Pago') {
-                if (transaction.type === 'Receita') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance + $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                } else if (transaction.type === 'Despesa') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance - $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                } else if (transaction.type === 'Transferência' || transaction.type === 'Depósito') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance - $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                    if (transaction.destination_account_id) {
-                        await client.query(
-                            'UPDATE financial_accounts SET current_balance = current_balance + $1 WHERE id = $2',
-                            [transaction.amount, transaction.destination_account_id]
-                        );
-                    }
-                }
-            }
-            // Se mudou de Pago para Pendente/Cancelado (Estorno)
-            else if (oldStatus === 'Pago' && status !== 'Pago') {
-                if (transaction.type === 'Receita') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance - $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                } else if (transaction.type === 'Despesa') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance + $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                } else if (transaction.type === 'Transferência' || transaction.type === 'Depósito') {
-                    await client.query(
-                        'UPDATE financial_accounts SET current_balance = current_balance + $1 WHERE id = $2',
-                        [transaction.amount, transaction.account_id]
-                    );
-                    if (transaction.destination_account_id) {
-                        await client.query(
-                            'UPDATE financial_accounts SET current_balance = current_balance - $1 WHERE id = $2',
-                            [transaction.amount, transaction.destination_account_id]
-                        );
-                    }
-                }
-            }
+            // NOTA: O trigger update_balance_after_transaction no banco de dados
+            // já atualiza automaticamente o saldo da conta quando uma transação é atualizada
+            // NÃO fazer atualização manual aqui para evitar duplicação
 
             await client.query('COMMIT');
         } catch (error) {

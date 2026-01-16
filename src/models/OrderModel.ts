@@ -460,15 +460,9 @@ export class OrderModel extends BaseModel {
               ]
             );
 
-            // Atualizar saldo da conta APENAS se estiver pago
-            if (isPaid) {
-              await client.query(
-                `UPDATE financial_accounts 
-                 SET current_balance = current_balance + $1 
-                 WHERE id = $2`,
-                [order.total_value, accountId]
-              );
-            }
+            // NOTA: O trigger update_balance_after_transaction no banco de dados
+            // já atualiza automaticamente o saldo da conta quando uma transação é criada
+            // NÃO fazer atualização manual aqui para evitar duplicação
           }
         }
 
