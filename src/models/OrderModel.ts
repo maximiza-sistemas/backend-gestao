@@ -452,8 +452,8 @@ export class OrderModel extends BaseModel {
                 `Venda - Pedido #${order.id} `,
                 order.total_value,
                 order.payment_method,
-                new Date(), // transaction_date
-                new Date(), // due_date
+                order.order_date || new Date(), // transaction_date - usa data do pedido
+                order.order_date || new Date(), // due_date - usa data do pedido
                 paymentDate,
                 transactionStatus,
                 userId || null
