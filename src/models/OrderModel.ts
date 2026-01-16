@@ -653,7 +653,24 @@ export class OrderModel extends BaseModel {
           throw new Error('Apenas pedidos pendentes podem ser deletados');
         }
 
-        // 1. Deletar movimentações de estoque relacionadas
+        // 1. Reverter movimentações de estoque (criar movimentação de entrada para cada saída)
+        const stockMovements = await client.query(
+          `SELECT product_id, location_id, quantity, bottle_type 
+           FROM stock_movements 
+           WHERE order_id = $1 AND movement_type = 'Saída'`,
+          [id]
+        );
+
+        // Criar movimentações de entrada para reverter o estoque
+        for (const mov of stockMovements.rows) {
+          await client.query(
+            `INSERT INTO stock_movements (product_id, location_id, movement_type, bottle_type, quantity, reason)
+             VALUES ($1, $2, 'Entrada', $3, $4, $5)`,
+            [mov.product_id, mov.location_id, mov.bottle_type, mov.quantity, `Estorno - Pedido #${id} excluído`]
+          );
+        }
+
+        // Agora deletar as movimentações originais do pedido
         await client.query('DELETE FROM stock_movements WHERE order_id = $1', [id]);
 
         // 2. Deletar contas a receber relacionadas
