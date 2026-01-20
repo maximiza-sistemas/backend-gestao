@@ -24,6 +24,27 @@ export class OrderModel extends BaseModel {
         const grossValue = totalValue;
         const netValue = grossValue - expenses;
 
+        // Calcular paid_amount e pending_amount com base no status de pagamento
+        let paidAmount = 0;
+        let pendingAmount = totalValue;
+
+        const paymentStatus = orderData.payment_status || 'Pendente';
+        const paymentCashAmount = orderData.payment_cash_amount || 0;
+
+        if (paymentStatus === 'Pago') {
+          // Pagamento à vista completo - tudo foi pago
+          paidAmount = totalValue;
+          pendingAmount = 0;
+        } else if (paymentStatus === 'Parcial') {
+          // Pagamento parcial (entrada em venda a prazo) - usa valor em dinheiro/pix como entrada
+          paidAmount = paymentCashAmount;
+          pendingAmount = totalValue - paidAmount;
+        } else {
+          // Pendente - nada foi pago ainda
+          paidAmount = 0;
+          pendingAmount = totalValue;
+        }
+
         // Criar o pedido
         const orderToCreate = {
           client_id: orderData.client_id,
@@ -36,8 +57,8 @@ export class OrderModel extends BaseModel {
           total_value: totalValue,
           discount: orderData.discount || 0,
           payment_method: orderData.payment_method || null,
-          payment_status: orderData.payment_status || 'Pendente',
-          payment_cash_amount: orderData.payment_cash_amount || 0,
+          payment_status: paymentStatus,
+          payment_cash_amount: paymentCashAmount,
           payment_term_amount: orderData.payment_term_amount || 0,
           payment_installments: orderData.payment_installments || 1,
           payment_due_date: orderData.payment_due_date || null,
@@ -46,6 +67,8 @@ export class OrderModel extends BaseModel {
           expenses: expenses,
           gross_value: grossValue,
           net_value: netValue,
+          paid_amount: paidAmount,
+          pending_amount: pendingAmount,
           payment_details: (orderData as any).payment_details || null
         };
 
