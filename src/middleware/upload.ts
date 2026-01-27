@@ -2,18 +2,34 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
+// Base directory for uploads - use environment variable for production persistence
+// Em produção (EasyPanel), usar /data/uploads que é um volume persistente
+const UPLOAD_BASE_PATH = process.env.UPLOAD_BASE_PATH || path.join(__dirname, '../../uploads');
+
 // Diretório de uploads para contratos
-const contractsDir = path.join(__dirname, '../../uploads/contracts');
+const contractsDir = path.join(UPLOAD_BASE_PATH, 'contracts');
 
 // Diretório de uploads para comprovantes
-const receiptsDir = path.join(__dirname, '../../uploads/receipts');
+const receiptsDir = path.join(UPLOAD_BASE_PATH, 'receipts');
+
+// Log dos caminhos para debug
+console.log('📁 Upload paths configurados:');
+console.log(`   UPLOAD_BASE_PATH: ${UPLOAD_BASE_PATH}`);
+console.log(`   contractsDir: ${contractsDir}`);
+console.log(`   receiptsDir: ${receiptsDir}`);
 
 // Criar diretórios se não existirem
-if (!fs.existsSync(contractsDir)) {
-    fs.mkdirSync(contractsDir, { recursive: true });
-}
-if (!fs.existsSync(receiptsDir)) {
-    fs.mkdirSync(receiptsDir, { recursive: true });
+try {
+    if (!fs.existsSync(contractsDir)) {
+        fs.mkdirSync(contractsDir, { recursive: true });
+        console.log('✅ Diretório de contratos criado:', contractsDir);
+    }
+    if (!fs.existsSync(receiptsDir)) {
+        fs.mkdirSync(receiptsDir, { recursive: true });
+        console.log('✅ Diretório de comprovantes criado:', receiptsDir);
+    }
+} catch (error) {
+    console.error('❌ Erro ao criar diretórios de upload:', error);
 }
 
 // Configuração de armazenamento para contratos

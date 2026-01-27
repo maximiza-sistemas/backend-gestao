@@ -6,6 +6,7 @@ import { validate, orderSchemas, validateId, validatePagination } from '../middl
 import { createLimiter, updateLimiter } from '../middleware/rateLimit';
 import { activityLogger } from '../middleware/logger';
 import { uploadReceipt, getReceiptPath } from '../middleware/upload';
+import { query } from '../config/database';
 import path from 'path';
 import fs from 'fs';
 
@@ -159,27 +160,133 @@ router.get('/:id',
 router.post('/',
   requireAuth,
   createLimiter,
-  validate(orderSchemas.create),
   activityLogger('Criou pedido', 'orders'),
   async (req: Request, res: Response): Promise<void> => {
-    try {
-      // Adicionar o ID do usuário logado ao pedido
-      const orderData = {
-        ...req.body,
-        user_id: req.user!.id
-      };
+    // Usar middleware de upload para aceitar comprovante
+    uploadReceipt(req, res, async (err: any) => {
+      try {
+        if (err) {
+          console.error('Erro no upload:', err);
+          res.status(400).json({
+            success: false,
+            error: err.message || 'Erro ao fazer upload do comprovante'
+          });
+          return;
+        }
 
-      const result = await orderModel.createWithItems(orderData);
-      res.status(result.success ? 201 : 400).json(result);
-    } catch (error) {
-      console.error('Erro ao criar pedido:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor'
-      });
-    }
+        // Processar dados - podem vir como FormData ou JSON
+        let orderData = req.body;
+
+        // Se items veio como string JSON (FormData), fazer parse
+        if (typeof orderData.items === 'string') {
+          try {
+            orderData.items = JSON.parse(orderData.items);
+          } catch {
+            res.status(400).json({
+              success: false,
+              error: 'Formato inválido para itens do pedido'
+            });
+            return;
+          }
+        }
+
+        // Converter campos numéricos se vieram como string (FormData)
+        if (typeof orderData.client_id === 'string') {
+          orderData.client_id = parseInt(orderData.client_id);
+        }
+        if (typeof orderData.payment_cash_amount === 'string') {
+          orderData.payment_cash_amount = parseFloat(orderData.payment_cash_amount) || 0;
+        }
+        if (typeof orderData.payment_term_amount === 'string') {
+          orderData.payment_term_amount = parseFloat(orderData.payment_term_amount) || 0;
+        }
+        if (typeof orderData.expenses === 'string') {
+          orderData.expenses = parseFloat(orderData.expenses) || 0;
+        }
+        if (typeof orderData.gross_value === 'string') {
+          orderData.gross_value = parseFloat(orderData.gross_value) || 0;
+        }
+        if (typeof orderData.net_value === 'string') {
+          orderData.net_value = parseFloat(orderData.net_value) || 0;
+        }
+
+        // Adicionar o ID do usuário logado ao pedido
+        orderData.user_id = req.user!.id;
+
+        // Obter o nome do arquivo do comprovante, se enviado
+        const receiptFile = req.file ? req.file.filename : null;
+
+        console.log('📦 Dados do pedido recebidos:', {
+          client_id: orderData.client_id,
+          order_date: orderData.order_date,
+          payment_status: orderData.payment_status,
+          payment_method: orderData.payment_method,
+          hasReceipt: !!receiptFile,
+          receiptFilename: receiptFile
+        });
+
+        // Criar o pedido
+        const result = await orderModel.createWithItems(orderData);
+
+        // Se o pedido foi criado com sucesso e há comprovante, criar registro de pagamento inicial
+        if (result.success && result.data && receiptFile) {
+          const paymentStatus = orderData.payment_status || 'Pendente';
+
+          // Só criar pagamento inicial se houve pagamento (à vista ou entrada)
+          if (paymentStatus === 'Pago' || paymentStatus === 'Parcial') {
+            const orderId = result.data.id;
+
+            // Determinar valor do pagamento inicial
+            let paymentAmount = 0;
+            let paymentMethod = orderData.payment_method || 'Dinheiro';
+
+            if (paymentStatus === 'Pago') {
+              // Pagamento à vista completo - total do pedido
+              paymentAmount = parseFloat(result.data.total_value) || 0;
+            } else if (paymentStatus === 'Parcial') {
+              // Entrada em venda a prazo - valor em dinheiro
+              paymentAmount = orderData.payment_cash_amount || 0;
+              paymentMethod = 'Entrada';
+            }
+
+            if (paymentAmount > 0) {
+              // Criar registro de pagamento com comprovante
+              await orderPaymentModel.create({
+                order_id: orderId,
+                amount: paymentAmount,
+                payment_method: paymentMethod === 'Misto' ? 'Dinheiro' : paymentMethod,
+                notes: 'Pagamento inicial registrado com pedido',
+                user_id: req.user!.id,
+                payment_date: orderData.order_date,
+                receipt_file: receiptFile
+              });
+
+              console.log('✅ Pagamento inicial criado com comprovante:', { orderId, paymentAmount, receiptFile });
+            } else {
+              console.log('⚠️ Comprovante recebido mas valor do pagamento é 0:', { orderId, paymentAmount, paymentStatus });
+            }
+          } else {
+            console.log('⚠️ Comprovante recebido mas status não permite pagamento:', { paymentStatus, orderId: result.data.id });
+          }
+        } else if (receiptFile && result.success) {
+          console.log('⚠️ Comprovante recebido mas condições não atendidas:', {
+            hasData: !!result.data,
+            paymentStatus: orderData.payment_status
+          });
+        }
+
+        res.status(result.success ? 201 : 400).json(result);
+      } catch (error) {
+        console.error('Erro ao criar pedido:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Erro interno do servidor'
+        });
+      }
+    });
   }
 );
+
 
 // PUT /orders/:id - Atualizar pedido
 router.put('/:id',
@@ -191,13 +298,25 @@ router.put('/:id',
     try {
       const id = parseInt(req.params.id);
 
-      // Por enquanto, não permitimos atualização completa do pedido
-      // Apenas campos específicos podem ser atualizados
+      // Campos permitidos para atualização
       const allowedFields = [
+        'client_id',
+        'order_date',
         'delivery_date',
         'delivery_address',
         'payment_method',
-        'notes'
+        'payment_status',
+        'payment_cash_amount',
+        'payment_term_amount',
+        'payment_installments',
+        'payment_due_date',
+        'notes',
+        'status',
+        'expenses',
+        'gross_value',
+        'net_value',
+        'discount',
+        'payment_details'
       ];
 
       const updateData: any = {};
@@ -207,7 +326,10 @@ router.put('/:id',
         }
       }
 
-      if (Object.keys(updateData).length === 0) {
+      // Verificar se há itens para atualizar
+      const hasItems = req.body.items && Array.isArray(req.body.items) && req.body.items.length > 0;
+
+      if (Object.keys(updateData).length === 0 && !hasItems) {
         res.status(400).json({
           success: false,
           error: 'Nenhum campo válido para atualização fornecido'
@@ -215,7 +337,58 @@ router.put('/:id',
         return;
       }
 
+      // Se tem itens, recalcular total_value
+      if (hasItems) {
+        let totalValue = 0;
+        for (const item of req.body.items) {
+          totalValue += item.quantity * item.unit_price;
+        }
+        totalValue -= (updateData.discount || req.body.discount || 0);
+        updateData.total_value = totalValue;
+
+        // Recalcular paid_amount e pending_amount
+        const expenses = updateData.expenses || req.body.expenses || 0;
+        updateData.gross_value = totalValue;
+        updateData.net_value = totalValue - expenses;
+
+        // Calcular paid/pending baseado no status de pagamento
+        const paymentStatus = updateData.payment_status || req.body.payment_status || 'Pendente';
+        const paymentCashAmount = updateData.payment_cash_amount || req.body.payment_cash_amount || 0;
+
+        if (paymentStatus === 'Pago') {
+          updateData.paid_amount = totalValue;
+          updateData.pending_amount = 0;
+        } else if (paymentStatus === 'Parcial') {
+          updateData.paid_amount = paymentCashAmount;
+          updateData.pending_amount = totalValue - paymentCashAmount;
+        } else {
+          updateData.paid_amount = 0;
+          updateData.pending_amount = totalValue;
+        }
+      }
+
+      // Atualizar dados do pedido
       const result = await orderModel.update(id, updateData);
+
+      // Se tem itens, atualizar os itens do pedido
+      if (hasItems && result.success) {
+        try {
+          // Deletar itens antigos
+          await query('DELETE FROM order_items WHERE order_id = $1', [id]);
+
+          // Inserir novos itens
+          for (const item of req.body.items) {
+            await query(
+              `INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) 
+               VALUES ($1, $2, $3, $4, $5)`,
+              [id, item.product_id, item.quantity, item.unit_price, item.quantity * item.unit_price]
+            );
+          }
+        } catch (itemError) {
+          console.error('Erro ao atualizar itens do pedido:', itemError);
+        }
+      }
+
       res.json(result);
     } catch (error) {
       console.error('Erro ao atualizar pedido:', error);
