@@ -276,7 +276,9 @@ export class OrderModel extends BaseModel {
             WHEN o.payment_method = 'Misto' THEN
         CONCAT('Misto (R$ ', o.payment_cash_amount, ' à vista + R$ ', o.payment_term_amount, ' a prazo)')
             ELSE o.payment_method
-        END as "paymentMethodDisplay"
+        END as "paymentMethodDisplay",
+          (SELECT STRING_AGG(DISTINCT p.name, ', ') FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = o.id) as "items_summary",
+          (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) as "total_quantity"
         FROM orders o
         JOIN clients c ON o.client_id = c.id
         LEFT JOIN users u ON o.user_id = u.id
