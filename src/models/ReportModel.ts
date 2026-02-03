@@ -36,7 +36,9 @@ export class ReportModel {
           oi.total_price,
           o.order_date,
           COALESCE(o.payment_method, 'Não informado') AS payment_method,
-          COALESCE(o.expenses, 0) AS order_expenses
+          COALESCE(o.expenses, 0) AS order_expenses,
+          COALESCE(o.status, 'Pendente') AS order_status,
+          COALESCE(o.payment_status, 'Pendente') AS payment_status
         FROM orders o
         JOIN clients c ON c.id = o.client_id
         LEFT JOIN locations l ON l.id = o.location_id
@@ -60,6 +62,8 @@ export class ReportModel {
       date: formatDate(row.order_date),
       paymentMethod: row.payment_method || 'Não informado',
       expenses: toNumber(row.order_expenses),
+      status: row.order_status || 'Pendente',
+      paymentStatus: row.payment_status || 'Pendente',
     }));
 
     const productSummaryResult = await query(
