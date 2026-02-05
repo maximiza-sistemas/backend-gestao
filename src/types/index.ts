@@ -471,6 +471,16 @@ export interface DetailedReportData {
     maintenance: number;
     total: number;
   }>;
+  // Compras de produtos (botijões)
+  purchases?: Array<{
+    product: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+    date: string;
+    location: string;
+  }>;
+  purchasesTotal?: number;
 }
 
 export interface DetailedReportFilters {

@@ -297,6 +297,52 @@ export class ReportModel {
       total: toNumber(row.total),
     }));
 
+    // Buscar Compras de Produtos (product_purchases) no período
+    let purchasesTotal = 0;
+    let purchasesList: Array<{
+      product: string;
+      quantity: number;
+      unitPrice: number;
+      total: number;
+      date: string;
+      location: string;
+    }> = [];
+
+    try {
+      const purchasesLocationClause = locationId ? ' AND pp.location_id = $3' : '';
+      const purchasesResult = await query(
+        `
+          SELECT
+            p.name AS product_name,
+            pp.quantity,
+            pp.unit_price,
+            (pp.quantity * pp.unit_price) AS total_value,
+            pp.purchase_date,
+            COALESCE(l.name, 'Não informada') AS location_name
+          FROM product_purchases pp
+          JOIN products p ON p.id = pp.product_id
+          LEFT JOIN locations l ON l.id = pp.location_id
+          WHERE pp.purchase_date BETWEEN $1 AND $2
+          ${purchasesLocationClause}
+          ORDER BY pp.purchase_date ASC
+        `,
+        paramsWithLocation
+      );
+
+      purchasesList = purchasesResult.rows.map((row: any) => ({
+        product: row.product_name,
+        quantity: toNumber(row.quantity),
+        unitPrice: toNumber(row.unit_price),
+        total: toNumber(row.total_value),
+        date: formatDate(row.purchase_date),
+        location: row.location_name,
+      }));
+
+      purchasesTotal = purchasesList.reduce((sum, p) => sum + p.total, 0);
+    } catch (e) {
+      console.warn('Tabela product_purchases pode não existir:', e);
+    }
+
     const intlFormatter = new Intl.DateTimeFormat('pt-BR');
     const intlFormatterUTC = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' });
     const metadata: DetailedReportData['metadata'] = {
@@ -318,6 +364,8 @@ export class ReportModel {
       generalDetail,
       liquidStock,
       containerStock,
+      purchases: purchasesList,
+      purchasesTotal,
     };
   }
 }
