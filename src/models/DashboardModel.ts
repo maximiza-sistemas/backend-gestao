@@ -105,18 +105,20 @@ export class DashboardModel {
   }
 
   /**
-   * Busca distribuição de estoque por tipo de produto
-   */
+ * Busca distribuição de estoque por tipo de produto
+ * Mostra apenas produtos que têm registro no estoque e quantidade > 0
+ */
   async getStockDistribution(): Promise<StockDistribution[]> {
     const result = await query(`
-      SELECT
-        p.name,
-        COALESCE(SUM(s.full_quantity), 0) as value
-      FROM products p
-      LEFT JOIN stock s ON s.product_id = p.id
-      GROUP BY p.name
-      ORDER BY value DESC
-    `);
+    SELECT
+      UPPER(p.name) as name,
+      COALESCE(SUM(s.full_quantity), 0) as value
+    FROM stock s
+    INNER JOIN products p ON s.product_id = p.id
+    WHERE s.full_quantity > 0
+    GROUP BY UPPER(p.name)
+    ORDER BY value DESC
+  `);
 
     return result.rows.map((row: any) => ({
       name: row.name,
