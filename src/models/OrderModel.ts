@@ -183,7 +183,7 @@ export class OrderModel extends BaseModel {
       const {
         page = 1,
         limit = 50,
-        sort = 'order_date',
+        sort = 'created_at',
         order = 'DESC',
         search,
         status,
@@ -222,8 +222,8 @@ export class OrderModel extends BaseModel {
       }
 
       if (search) {
-        whereClause += ` AND(c.name ILIKE $${paramIndex} OR CAST(o.id AS TEXT) ILIKE $${paramIndex})`;
-        params.push(`% ${search}% `);
+        whereClause += ` AND (c.name ILIKE $${paramIndex} OR CAST(o.id AS TEXT) ILIKE $${paramIndex})`;
+        params.push(`%${search}%`);
         paramIndex++;
       }
 

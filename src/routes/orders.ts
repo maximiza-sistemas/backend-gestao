@@ -457,10 +457,19 @@ router.patch('/:id/payment-status',
 router.delete('/:id',
   requireAuth,
   validateId,
-  activityLogger('Deletou pedido', 'orders'),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const id = parseInt(req.params.id);
+      const { reason } = req.body;
+
+      // Validar motivo de exclusão
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
+        res.status(400).json({
+          success: false,
+          error: 'É necessário informar um motivo de exclusão (mínimo 3 caracteres)'
+        });
+        return;
+      }
 
       // Verificar se o pedido pode ser deletado
       const orderResult = await orderModel.findById(id);
@@ -479,6 +488,32 @@ router.delete('/:id',
           error: 'Apenas pedidos pendentes podem ser deletados'
         });
         return;
+      }
+
+      // Registrar log de atividade com motivo
+      try {
+        await query(
+          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, old_values, new_values, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [
+            req.user!.id,
+            'Deletou pedido',
+            'orders',
+            id,
+            JSON.stringify({
+              client_name: order.client_name || order.clientName,
+              total_value: order.total_value,
+              status: order.status
+            }),
+            JSON.stringify({
+              reason: reason.trim(),
+              deleted_at: new Date().toISOString()
+            })
+          ]
+        );
+      } catch (logError) {
+        console.error('Erro ao registrar log de atividade:', logError);
+        // Continua mesmo se falhar o log
       }
 
       const result = await orderModel.delete(id);
