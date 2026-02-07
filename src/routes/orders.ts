@@ -709,6 +709,69 @@ router.get('/:id/payments/:paymentId/receipt',
   }
 );
 
+// PUT /orders/:id/payments/:paymentId - Atualizar pagamento
+router.put('/:id/payments/:paymentId',
+  requireAuth,
+  createLimiter,
+  activityLogger('Editou pagamento', 'order_payments'),
+  async (req: Request, res: Response): Promise<void> => {
+    // Usar middleware de upload dentro do handler
+    uploadReceipt(req, res, async (err: any) => {
+      try {
+        if (err) {
+          console.error('Erro no upload:', err);
+          res.status(400).json({
+            success: false,
+            error: err.message || 'Erro ao fazer upload do comprovante'
+          });
+          return;
+        }
+
+        const paymentId = parseInt(req.params.paymentId);
+
+        if (isNaN(paymentId)) {
+          res.status(400).json({
+            success: false,
+            error: 'ID do pagamento inválido'
+          });
+          return;
+        }
+
+        const { amount, payment_method, notes, payment_date } = req.body;
+
+        // Validar método de pagamento se fornecido
+        if (payment_method && !['Dinheiro', 'Pix', 'Cartão', 'Transferência', 'Depósito'].includes(payment_method)) {
+          res.status(400).json({
+            success: false,
+            error: 'Método de pagamento inválido'
+          });
+          return;
+        }
+
+        const updateData: any = {};
+        if (amount !== undefined) updateData.amount = parseFloat(amount);
+        if (payment_method) updateData.payment_method = payment_method;
+        if (notes !== undefined) updateData.notes = notes;
+        if (payment_date) updateData.payment_date = payment_date;
+
+        // Arquivo de comprovante
+        if (req.file) {
+          updateData.receipt_file = req.file.filename;
+        }
+
+        const result = await orderPaymentModel.updatePayment(paymentId, updateData);
+        res.status(result.success ? 200 : 400).json(result);
+      } catch (error) {
+        console.error('Erro ao atualizar pagamento:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Erro interno do servidor'
+        });
+      }
+    });
+  }
+);
+
 // DELETE /orders/:id/payments/:paymentId - Excluir pagamento
 router.delete('/:id/payments/:paymentId',
   requireAuth,

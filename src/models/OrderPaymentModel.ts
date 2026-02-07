@@ -103,6 +103,102 @@ export class OrderPaymentModel extends BaseModel {
         }
     }
 
+    // Atualizar pagamento
+    async updatePayment(paymentId: number, data: {
+        amount?: number;
+        payment_method?: 'Dinheiro' | 'Pix' | 'Cartão' | 'Transferência' | 'Depósito';
+        notes?: string;
+        payment_date?: string;
+        receipt_file?: string;
+    }): Promise<ApiResponse> {
+        try {
+            // Buscar pagamento existente
+            const existingResult = await this.customQuery(
+                `SELECT op.*, o.total_value, o.discount, o.paid_amount
+                 FROM order_payments op
+                 JOIN orders o ON o.id = op.order_id
+                 WHERE op.id = $1`,
+                [paymentId]
+            );
+
+            if (!existingResult.data || existingResult.data.length === 0) {
+                return {
+                    success: false,
+                    error: 'Pagamento não encontrado'
+                };
+            }
+
+            const existing = existingResult.data[0];
+
+            // Validar novo valor se fornecido
+            if (data.amount !== undefined) {
+                const orderTotal = parseFloat(existing.total_value) - parseFloat(existing.discount || 0);
+                const currentPaid = parseFloat(existing.paid_amount || 0);
+                const oldAmount = parseFloat(existing.amount);
+                // Max = o que falta pagar + o valor antigo deste pagamento
+                const maxPayment = orderTotal - currentPaid + oldAmount;
+
+                if (data.amount > maxPayment) {
+                    return {
+                        success: false,
+                        error: `Valor máximo permitido: R$ ${maxPayment.toFixed(2)}`
+                    };
+                }
+            }
+
+            // Montar SET dinâmico
+            const fields: string[] = [];
+            const values: any[] = [];
+            let paramIndex = 1;
+
+            if (data.amount !== undefined) {
+                fields.push(`amount = $${paramIndex++}`);
+                values.push(data.amount);
+            }
+            if (data.payment_method !== undefined) {
+                fields.push(`payment_method = $${paramIndex++}`);
+                values.push(data.payment_method);
+            }
+            if (data.notes !== undefined) {
+                fields.push(`notes = $${paramIndex++}`);
+                values.push(data.notes);
+            }
+            if (data.payment_date !== undefined) {
+                fields.push(`payment_date = $${paramIndex++}`);
+                values.push(data.payment_date);
+            }
+            if (data.receipt_file !== undefined) {
+                fields.push(`receipt_file = $${paramIndex++}`);
+                values.push(data.receipt_file);
+            }
+
+            if (fields.length === 0) {
+                return {
+                    success: false,
+                    error: 'Nenhum campo para atualizar'
+                };
+            }
+
+            values.push(paymentId);
+            const result = await this.customQuery(
+                `UPDATE order_payments SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+                values
+            );
+
+            return {
+                success: true,
+                data: result.data[0],
+                message: 'Pagamento atualizado com sucesso'
+            };
+        } catch (error) {
+            console.error('Erro ao atualizar pagamento:', error);
+            return {
+                success: false,
+                error: 'Erro interno do servidor'
+            };
+        }
+    }
+
     // Excluir pagamento
     async deletePayment(paymentId: number): Promise<ApiResponse> {
         try {
