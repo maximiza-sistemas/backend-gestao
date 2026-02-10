@@ -410,6 +410,7 @@ export interface DetailedSaleRecord {
   paymentMethod: string;
   status?: string;
   paymentStatus?: string;
+  paidAmount?: number;
 }
 
 
