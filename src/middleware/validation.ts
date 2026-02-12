@@ -296,7 +296,7 @@ export const validatePagination = (req: Request, res: Response, next: NextFuncti
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(500).default(50),
     sort: Joi.string().max(50),
-    order: Joi.string().valid('ASC', 'DESC').default('ASC'),
+    order: Joi.string().valid('ASC', 'DESC').default('DESC'),
     search: Joi.string().max(100).allow('')
   }).unknown(true);
 

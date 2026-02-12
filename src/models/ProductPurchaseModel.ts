@@ -4,14 +4,16 @@ export interface ProductPurchase {
     id: number;
     product_id: number;
     product_name?: string;
-    location_id?: number | null;  // Empresa/Filial que realizou a compra
-    location_name?: string;  // Nome da empresa/filial
+    location_id?: number | null;
+    location_name?: string;
     unit_price: number;
     quantity: number;
     total_amount: number;
     purchase_date: string;
-    is_term: boolean;  // A prazo
-    payment_date?: string | null;  // Data do pagamento (para compras a prazo)
+    is_term: boolean;
+    payment_date?: string | null;
+    due_date?: string | null;
+    invoice_number?: string | null;
     notes?: string;
     created_at: string;
     updated_at?: string;
@@ -36,7 +38,9 @@ export interface CreatePurchaseData {
     purchase_date?: string;
     is_term?: boolean;
     payment_date?: string | null;
-    location_id?: number | null;  // Empresa/Filial que realizou a compra
+    due_date?: string | null;
+    invoice_number?: string | null;
+    location_id?: number | null;
     notes?: string;
 }
 
@@ -69,8 +73,8 @@ export class ProductPurchaseModel {
             // Usando ::DATE cast explícito para garantir interpretação correta
             const purchaseResult = await client.query(`
                 INSERT INTO product_purchases 
-                (product_id, unit_price, quantity, total_amount, purchase_date, is_installment, location_id, notes)
-                VALUES ($1, $2, $3, $4, $5::DATE, $6, $7, $8)
+                (product_id, unit_price, quantity, total_amount, purchase_date, is_installment, location_id, due_date, invoice_number, notes)
+                VALUES ($1, $2, $3, $4, $5::DATE, $6, $7, $8::DATE, $9, $10)
                 RETURNING *
             `, [
                 data.product_id,
@@ -80,6 +84,8 @@ export class ProductPurchaseModel {
                 data.purchase_date || getLocalDate(),
                 isTerm,
                 data.location_id || null,
+                data.due_date || null,
+                data.invoice_number || null,
                 data.notes || null
             ]);
 
