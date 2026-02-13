@@ -669,6 +669,42 @@ router.put('/:id/purchases/:purchaseId/installments/:installmentId',
   }
 );
 
+// PUT /products/:id/purchases/:purchaseId - Atualizar compra
+router.put('/:id/purchases/:purchaseId',
+  requireAuth,
+  validateId,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const purchaseId = parseInt(req.params.purchaseId);
+      const { unit_price, quantity, purchase_date, is_term, payment_date, due_date, invoice_number, location_id, notes } = req.body;
+
+      const updateData: any = {};
+      if (unit_price !== undefined) updateData.unit_price = parseFloat(unit_price);
+      if (quantity !== undefined) updateData.quantity = parseInt(quantity);
+      if (purchase_date !== undefined) updateData.purchase_date = purchase_date;
+      if (is_term !== undefined) updateData.is_term = is_term;
+      if (payment_date !== undefined) updateData.payment_date = payment_date || null;
+      if (due_date !== undefined) updateData.due_date = due_date || null;
+      if (invoice_number !== undefined) updateData.invoice_number = invoice_number || null;
+      if (location_id !== undefined) updateData.location_id = location_id ? parseInt(location_id) : null;
+      if (notes !== undefined) updateData.notes = notes || null;
+
+      const purchase = await ProductPurchaseModel.update(purchaseId, updateData);
+
+      res.json({
+        success: true,
+        data: purchase
+      });
+    } catch (error) {
+      console.error('Erro ao atualizar compra:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
+    }
+  }
+);
+
 // DELETE /products/:id/purchases/:purchaseId - Excluir compra
 router.delete('/:id/purchases/:purchaseId',
   requireAuth,

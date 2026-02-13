@@ -188,6 +188,48 @@ export class ProductPurchaseModel {
         };
     }
 
+    // Update purchase
+    static async update(purchaseId: number, data: Partial<CreatePurchaseData>): Promise<ProductPurchase> {
+        const totalAmount = (data.unit_price !== undefined && data.quantity !== undefined)
+            ? data.unit_price * data.quantity
+            : undefined;
+
+        const fields: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        if (data.unit_price !== undefined) { fields.push(`unit_price = $${paramIndex++}`); values.push(data.unit_price); }
+        if (data.quantity !== undefined) { fields.push(`quantity = $${paramIndex++}`); values.push(data.quantity); }
+        if (totalAmount !== undefined) { fields.push(`total_amount = $${paramIndex++}`); values.push(totalAmount); }
+        if (data.purchase_date !== undefined) { fields.push(`purchase_date = $${paramIndex}::DATE`); values.push(data.purchase_date); paramIndex++; }
+        if (data.due_date !== undefined) { fields.push(`due_date = $${paramIndex}::DATE`); values.push(data.due_date || null); paramIndex++; }
+        if (data.invoice_number !== undefined) { fields.push(`invoice_number = $${paramIndex++}`); values.push(data.invoice_number || null); }
+        if (data.location_id !== undefined) { fields.push(`location_id = $${paramIndex++}`); values.push(data.location_id || null); }
+        if (data.notes !== undefined) { fields.push(`notes = $${paramIndex++}`); values.push(data.notes || null); }
+        if (data.is_term !== undefined) { fields.push(`is_installment = $${paramIndex++}`); values.push(data.is_term); }
+        if ((data as any).payment_date !== undefined) { fields.push(`payment_date = $${paramIndex}::DATE`); values.push((data as any).payment_date || null); paramIndex++; }
+
+        fields.push(`updated_at = CURRENT_TIMESTAMP`);
+        values.push(purchaseId);
+
+        const result = await pool.query(`
+            UPDATE product_purchases
+            SET ${fields.join(', ')}
+            WHERE id = $${paramIndex}
+            RETURNING *
+        `, values);
+
+        if (result.rows.length === 0) {
+            throw new Error('Compra não encontrada');
+        }
+
+        return {
+            ...result.rows[0],
+            unit_price: parseFloat(result.rows[0].unit_price),
+            total_amount: parseFloat(result.rows[0].total_amount),
+        };
+    }
+
     // Delete purchase
     static async delete(purchaseId: number): Promise<void> {
         await pool.query('DELETE FROM product_purchases WHERE id = $1', [purchaseId]);

@@ -46,7 +46,7 @@ export class ReportModel {
         JOIN products p ON p.id = oi.product_id
         WHERE o.order_date BETWEEN $1 AND $2
         ${locationClause}
-        ORDER BY o.order_date ASC, c.name ASC
+        ORDER BY o.order_date DESC, c.name ASC
       `,
       paramsWithLocation
     );
@@ -137,7 +137,7 @@ export class ReportModel {
           LEFT JOIN orders o ON o.id = r.order_id
           WHERE r.issue_date BETWEEN $1 AND $2
           ${locationId ? ' AND o.location_id = $3' : ''}
-          ORDER BY r.issue_date ASC
+          ORDER BY r.issue_date DESC
         `,
         locationId ? paramsWithLocation : baseParams
       );
@@ -173,7 +173,7 @@ export class ReportModel {
           JOIN clients c ON c.id = o.client_id
           WHERE op.payment_date BETWEEN $1 AND $2
           ${locationId ? ' AND o.location_id = $3' : ''}
-          ORDER BY op.payment_date ASC
+          ORDER BY op.payment_date DESC
         `,
         locationId ? paramsWithLocation : baseParams
       );
@@ -204,7 +204,7 @@ export class ReportModel {
         FROM payables p
         LEFT JOIN suppliers s ON s.id = p.supplier_id
         WHERE p.due_date BETWEEN $1 AND $2
-        ORDER BY p.due_date ASC
+        ORDER BY p.due_date DESC
       `,
       baseParams
     );
@@ -324,7 +324,7 @@ export class ReportModel {
           LEFT JOIN locations l ON l.id = pp.location_id
           WHERE pp.purchase_date BETWEEN $1 AND $2
           ${purchasesLocationClause}
-          ORDER BY pp.purchase_date ASC
+          ORDER BY pp.purchase_date DESC
         `,
         paramsWithLocation
       );

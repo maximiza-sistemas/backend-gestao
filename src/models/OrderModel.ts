@@ -183,8 +183,6 @@ export class OrderModel extends BaseModel {
       const {
         page = 1,
         limit = 50,
-        sort = 'created_at',
-        order = 'DESC',
         search,
         status,
         client_id,
@@ -192,6 +190,9 @@ export class OrderModel extends BaseModel {
         date_to
       } = options;
 
+      // Garantir ordenação por data do pedido (mais recente primeiro)
+      const sort = options.sort || 'order_date';
+      const order = options.order === 'ASC' ? 'ASC' : 'DESC';
       let whereClause = 'WHERE 1=1';
       const params: any[] = [];
       let paramIndex = 1;
@@ -285,7 +286,7 @@ export class OrderModel extends BaseModel {
         LEFT JOIN locations l ON o.location_id = l.id
         LEFT JOIN vehicles v ON o.vehicle_id = v.id
         ${whereClause}
-        ORDER BY o.${sort} ${order}
+        ORDER BY o.${sort} ${order}, o.created_at DESC
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
         `;
       params.push(limit, offset);
