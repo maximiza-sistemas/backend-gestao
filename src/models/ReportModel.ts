@@ -39,6 +39,7 @@ export class ReportModel {
           COALESCE(o.expenses, 0) AS order_expenses,
           COALESCE(o.status, 'Pendente') AS order_status,
           COALESCE(o.payment_status, 'Pendente') AS payment_status,
+          o.payment_due_date,
           COALESCE(o.paid_amount, 0) AS order_paid_amount,
           COALESCE(o.total_value, 0) AS order_total_value
         FROM orders o
@@ -66,6 +67,7 @@ export class ReportModel {
       expenses: toNumber(row.order_expenses),
       status: row.order_status || 'Pendente',
       paymentStatus: row.payment_status || 'Pendente',
+      dueDate: formatDate(row.payment_due_date),
       orderPaidAmount: toNumber(row.order_paid_amount),
       orderTotalValue: toNumber(row.order_total_value),
     }));
