@@ -91,6 +91,30 @@ export class ProductPurchaseModel {
 
             const purchase = purchaseResult.rows[0];
 
+            // === SINCRONIZAÇÃO COM ESTOQUE ===
+            // Criar movimentação de estoque (Entrada de botijões cheios)
+            let movementLocationId = data.location_id || null;
+            if (!movementLocationId) {
+                const locationResult = await client.query(
+                    "SELECT id FROM locations WHERE status = 'Ativo' ORDER BY id LIMIT 1"
+                );
+                if (locationResult.rows.length > 0) {
+                    movementLocationId = locationResult.rows[0].id;
+                }
+            }
+
+            if (movementLocationId) {
+                await client.query(`
+                    INSERT INTO stock_movements (product_id, location_id, movement_type, bottle_type, quantity, reason)
+                    VALUES ($1, $2, 'Entrada', 'Cheio', $3, $4)
+                `, [
+                    data.product_id,
+                    movementLocationId,
+                    data.quantity,
+                    `Compra #${purchase.id} - Entrada de estoque`
+                ]);
+            }
+
             await client.query('COMMIT');
             return purchase;
         } catch (error) {
@@ -190,48 +214,181 @@ export class ProductPurchaseModel {
 
     // Update purchase
     static async update(purchaseId: number, data: Partial<CreatePurchaseData>): Promise<ProductPurchase> {
-        const totalAmount = (data.unit_price !== undefined && data.quantity !== undefined)
-            ? data.unit_price * data.quantity
-            : undefined;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
 
-        const fields: string[] = [];
-        const values: any[] = [];
-        let paramIndex = 1;
+            // Buscar compra atual para comparar mudanças de quantidade/localização
+            const currentResult = await client.query(
+                'SELECT * FROM product_purchases WHERE id = $1',
+                [purchaseId]
+            );
+            if (currentResult.rows.length === 0) {
+                throw new Error('Compra não encontrada');
+            }
+            const currentPurchase = currentResult.rows[0];
 
-        if (data.unit_price !== undefined) { fields.push(`unit_price = $${paramIndex++}`); values.push(data.unit_price); }
-        if (data.quantity !== undefined) { fields.push(`quantity = $${paramIndex++}`); values.push(data.quantity); }
-        if (totalAmount !== undefined) { fields.push(`total_amount = $${paramIndex++}`); values.push(totalAmount); }
-        if (data.purchase_date !== undefined) { fields.push(`purchase_date = $${paramIndex}::DATE`); values.push(data.purchase_date); paramIndex++; }
-        if (data.due_date !== undefined) { fields.push(`due_date = $${paramIndex}::DATE`); values.push(data.due_date || null); paramIndex++; }
-        if (data.invoice_number !== undefined) { fields.push(`invoice_number = $${paramIndex++}`); values.push(data.invoice_number || null); }
-        if (data.location_id !== undefined) { fields.push(`location_id = $${paramIndex++}`); values.push(data.location_id || null); }
-        if (data.notes !== undefined) { fields.push(`notes = $${paramIndex++}`); values.push(data.notes || null); }
-        if (data.is_term !== undefined) { fields.push(`is_installment = $${paramIndex++}`); values.push(data.is_term); }
-        if ((data as any).payment_date !== undefined) { fields.push(`payment_date = $${paramIndex}::DATE`); values.push((data as any).payment_date || null); paramIndex++; }
+            const totalAmount = (data.unit_price !== undefined && data.quantity !== undefined)
+                ? data.unit_price * data.quantity
+                : undefined;
 
-        fields.push(`updated_at = CURRENT_TIMESTAMP`);
-        values.push(purchaseId);
+            const fields: string[] = [];
+            const values: any[] = [];
+            let paramIndex = 1;
 
-        const result = await pool.query(`
-            UPDATE product_purchases
-            SET ${fields.join(', ')}
-            WHERE id = $${paramIndex}
-            RETURNING *
-        `, values);
+            if (data.unit_price !== undefined) { fields.push(`unit_price = $${paramIndex++}`); values.push(data.unit_price); }
+            if (data.quantity !== undefined) { fields.push(`quantity = $${paramIndex++}`); values.push(data.quantity); }
+            if (totalAmount !== undefined) { fields.push(`total_amount = $${paramIndex++}`); values.push(totalAmount); }
+            if (data.purchase_date !== undefined) { fields.push(`purchase_date = $${paramIndex}::DATE`); values.push(data.purchase_date); paramIndex++; }
+            if (data.due_date !== undefined) { fields.push(`due_date = $${paramIndex}::DATE`); values.push(data.due_date || null); paramIndex++; }
+            if (data.invoice_number !== undefined) { fields.push(`invoice_number = $${paramIndex++}`); values.push(data.invoice_number || null); }
+            if (data.location_id !== undefined) { fields.push(`location_id = $${paramIndex++}`); values.push(data.location_id || null); }
+            if (data.notes !== undefined) { fields.push(`notes = $${paramIndex++}`); values.push(data.notes || null); }
+            if (data.is_term !== undefined) { fields.push(`is_installment = $${paramIndex++}`); values.push(data.is_term); }
+            if ((data as any).payment_date !== undefined) { fields.push(`payment_date = $${paramIndex}::DATE`); values.push((data as any).payment_date || null); paramIndex++; }
 
-        if (result.rows.length === 0) {
-            throw new Error('Compra não encontrada');
+            fields.push(`updated_at = CURRENT_TIMESTAMP`);
+            values.push(purchaseId);
+
+            const result = await client.query(`
+                UPDATE product_purchases
+                SET ${fields.join(', ')}
+                WHERE id = $${paramIndex}
+                RETURNING *
+            `, values);
+
+            if (result.rows.length === 0) {
+                throw new Error('Compra não encontrada');
+            }
+
+            // === SINCRONIZAÇÃO COM ESTOQUE ===
+            const oldQty = parseInt(currentPurchase.quantity);
+            const newQty = data.quantity !== undefined ? data.quantity : oldQty;
+            const oldLocationId = currentPurchase.location_id;
+            const newLocationId = data.location_id !== undefined ? (data.location_id || null) : oldLocationId;
+
+            // Helper para resolver location_id (fallback para primeira ativa)
+            const resolveLocation = async (locId: number | null): Promise<number | null> => {
+                if (locId) return locId;
+                const locResult = await client.query(
+                    "SELECT id FROM locations WHERE status = 'Ativo' ORDER BY id LIMIT 1"
+                );
+                return locResult.rows.length > 0 ? locResult.rows[0].id : null;
+            };
+
+            if (oldLocationId === newLocationId) {
+                // Mesma localização — ajustar diferença de quantidade
+                const diff = newQty - oldQty;
+                if (diff !== 0) {
+                    const effectiveLocationId = await resolveLocation(newLocationId);
+                    if (effectiveLocationId) {
+                        const movType = diff > 0 ? 'Entrada' : 'Saída';
+                        await client.query(`
+                            INSERT INTO stock_movements (product_id, location_id, movement_type, bottle_type, quantity, reason)
+                            VALUES ($1, $2, $3, 'Cheio', $4, $5)
+                        `, [
+                            currentPurchase.product_id,
+                            effectiveLocationId,
+                            movType,
+                            Math.abs(diff),
+                            `Ajuste Compra #${purchaseId} - Quantidade ${oldQty} → ${newQty}`
+                        ]);
+                    }
+                }
+            } else {
+                // Localização mudou — reverter no local antigo, adicionar no novo
+                const effectiveOldLocation = await resolveLocation(oldLocationId);
+                const effectiveNewLocation = await resolveLocation(newLocationId);
+
+                if (effectiveOldLocation) {
+                    await client.query(`
+                        INSERT INTO stock_movements (product_id, location_id, movement_type, bottle_type, quantity, reason)
+                        VALUES ($1, $2, 'Saída', 'Cheio', $3, $4)
+                    `, [
+                        currentPurchase.product_id,
+                        effectiveOldLocation,
+                        oldQty,
+                        `Ajuste Compra #${purchaseId} - Transferência de localização`
+                    ]);
+                }
+
+                if (effectiveNewLocation) {
+                    await client.query(`
+                        INSERT INTO stock_movements (product_id, location_id, movement_type, bottle_type, quantity, reason)
+                        VALUES ($1, $2, 'Entrada', 'Cheio', $3, $4)
+                    `, [
+                        currentPurchase.product_id,
+                        effectiveNewLocation,
+                        newQty,
+                        `Ajuste Compra #${purchaseId} - Transferência de localização`
+                    ]);
+                }
+            }
+
+            await client.query('COMMIT');
+
+            return {
+                ...result.rows[0],
+                unit_price: parseFloat(result.rows[0].unit_price),
+                total_amount: parseFloat(result.rows[0].total_amount),
+            };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
         }
-
-        return {
-            ...result.rows[0],
-            unit_price: parseFloat(result.rows[0].unit_price),
-            total_amount: parseFloat(result.rows[0].total_amount),
-        };
     }
 
     // Delete purchase
     static async delete(purchaseId: number): Promise<void> {
-        await pool.query('DELETE FROM product_purchases WHERE id = $1', [purchaseId]);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // Buscar dados da compra para reverter o estoque
+            const purchaseResult = await client.query(
+                'SELECT * FROM product_purchases WHERE id = $1',
+                [purchaseId]
+            );
+
+            if (purchaseResult.rows.length > 0) {
+                const purchase = purchaseResult.rows[0];
+
+                // === SINCRONIZAÇÃO COM ESTOQUE ===
+                // Reverter a entrada de estoque criando movimentação de Saída
+                let movementLocationId = purchase.location_id;
+                if (!movementLocationId) {
+                    const locationResult = await client.query(
+                        "SELECT id FROM locations WHERE status = 'Ativo' ORDER BY id LIMIT 1"
+                    );
+                    if (locationResult.rows.length > 0) {
+                        movementLocationId = locationResult.rows[0].id;
+                    }
+                }
+
+                if (movementLocationId) {
+                    await client.query(`
+                        INSERT INTO stock_movements (product_id, location_id, movement_type, bottle_type, quantity, reason)
+                        VALUES ($1, $2, 'Saída', 'Cheio', $3, $4)
+                    `, [
+                        purchase.product_id,
+                        movementLocationId,
+                        parseInt(purchase.quantity),
+                        `Estorno Compra #${purchaseId} - Compra excluída`
+                    ]);
+                }
+            }
+
+            // Deletar a compra
+            await client.query('DELETE FROM product_purchases WHERE id = $1', [purchaseId]);
+
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 }
