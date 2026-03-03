@@ -228,8 +228,8 @@ router.post('/',
         // Criar o pedido
         const result = await orderModel.createWithItems(orderData);
 
-        // Se o pedido foi criado com sucesso e há comprovante, criar registro de pagamento inicial
-        if (result.success && result.data && receiptFile) {
+        // Se o pedido foi criado com sucesso, criar registro de pagamento inicial (com ou sem comprovante)
+        if (result.success && result.data) {
           const paymentStatus = orderData.payment_status || 'Pendente';
 
           // Só criar pagamento inicial se houve pagamento (à vista ou entrada)
@@ -246,33 +246,50 @@ router.post('/',
             } else if (paymentStatus === 'Parcial') {
               // Entrada em venda a prazo - valor em dinheiro
               paymentAmount = orderData.payment_cash_amount || 0;
-              paymentMethod = 'Entrada';
+
+              // Tentar obter o método real do pagamento a partir do payment_details
+              try {
+                const details = typeof orderData.payment_details === 'string'
+                  ? JSON.parse(orderData.payment_details)
+                  : orderData.payment_details;
+                if (details?.metodo_entrada) {
+                  paymentMethod = details.metodo_entrada;
+                } else if (details?.metodo) {
+                  paymentMethod = details.metodo;
+                } else {
+                  paymentMethod = 'Dinheiro';
+                }
+              } catch {
+                paymentMethod = 'Dinheiro';
+              }
+            }
+
+            // Normalizar método de pagamento composto para um válido no banco
+            if (paymentMethod === 'Misto' || paymentMethod === 'Prazo') {
+              paymentMethod = 'Dinheiro';
             }
 
             if (paymentAmount > 0) {
-              // Criar registro de pagamento com comprovante
-              await orderPaymentModel.create({
+              // Criar registro de pagamento (com comprovante se existir)
+              const paymentResult = await orderPaymentModel.create({
                 order_id: orderId,
                 amount: paymentAmount,
-                payment_method: paymentMethod === 'Misto' ? 'Dinheiro' : paymentMethod,
+                payment_method: paymentMethod,
                 notes: 'Pagamento inicial registrado com pedido',
                 user_id: req.user!.id,
                 payment_date: orderData.order_date,
-                receipt_file: receiptFile
+                receipt_file: receiptFile || undefined
               });
 
-              console.log('✅ Pagamento inicial criado com comprovante:', { orderId, paymentAmount, receiptFile });
+              if (paymentResult.success) {
+                console.log('✅ Pagamento inicial criado:', { orderId, paymentAmount, paymentMethod, receiptFile: receiptFile || 'nenhum' });
+              } else {
+                console.error('❌ Falha ao criar pagamento inicial:', { orderId, paymentAmount, paymentMethod, error: paymentResult.error });
+              }
             } else {
-              console.log('⚠️ Comprovante recebido mas valor do pagamento é 0:', { orderId, paymentAmount, paymentStatus });
+              console.log('⚠️ Valor do pagamento é 0, pagamento não criado:', { orderId, paymentAmount, paymentStatus });
             }
-          } else {
-            console.log('⚠️ Comprovante recebido mas status não permite pagamento:', { paymentStatus, orderId: result.data.id });
           }
-        } else if (receiptFile && result.success) {
-          console.log('⚠️ Comprovante recebido mas condições não atendidas:', {
-            hasData: !!result.data,
-            paymentStatus: orderData.payment_status
-          });
         }
 
         res.status(result.success ? 201 : 400).json(result);
