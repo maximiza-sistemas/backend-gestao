@@ -176,17 +176,18 @@ router.get('/transactions/:id/receipt', async (req: Request, res: Response): Pro
 });
 
 // Criar nova transação (com suporte a upload de comprovante)
-router.post('/transactions', async (req: Request, res: Response) => {
+router.post('/transactions', (req: Request, res: Response): void => {
     uploadReceipt(req, res, async (err: any) => {
-        if (err) {
-            console.error('Erro no upload:', err);
-            return res.status(400).json({
-                success: false,
-                error: err.message || 'Erro ao fazer upload do comprovante'
-            });
-        }
-
         try {
+            if (err) {
+                console.error('Erro no upload:', err);
+                res.status(400).json({
+                    success: false,
+                    error: err.message || 'Erro ao fazer upload do comprovante'
+                });
+                return;
+            }
+
             const userId = (req as any).user.id;
             const data = { ...req.body };
 
