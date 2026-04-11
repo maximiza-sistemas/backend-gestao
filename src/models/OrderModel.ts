@@ -199,9 +199,14 @@ export class OrderModel extends BaseModel {
 
       // Filtros
       if (status) {
-        whereClause += ` AND o.status = $${paramIndex} `;
-        params.push(status);
-        paramIndex++;
+        if (status === 'Pendente') {
+          // Filtrar por pedidos com valores em aberto (pending_amount > 0)
+          whereClause += ` AND COALESCE(o.pending_amount, o.total_value - COALESCE(o.discount, 0)) > 0 `;
+        } else {
+          whereClause += ` AND o.status = $${paramIndex} `;
+          params.push(status);
+          paramIndex++;
+        }
       }
 
       if (client_id) {
