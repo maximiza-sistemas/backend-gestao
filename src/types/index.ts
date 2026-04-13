@@ -592,7 +592,7 @@ export interface FinancialAccount {
 export interface FinancialTransaction {
   id: number;
   transaction_code: string;
-  type: 'Receita' | 'Despesa' | 'Transferência' | 'Depósito';
+  type: FinancialTransactionType;
   category_id?: number;
   category?: FinancialCategory;
   account_id: number;
@@ -629,8 +629,20 @@ export interface FinancialTransaction {
   account_type?: string;
 }
 
+export type FinancialTransactionType =
+  | 'Receita'
+  | 'Despesa'
+  | 'Despesas Diversas'
+  | 'Transferência'
+  | 'Depósito'
+  | 'Contas a Receber'
+  | 'Retirada pelo Proprietário'
+  | 'Venda no Vale'
+  | 'Venda no Cartão'
+  | 'Venda no Pix';
+
 export interface CreateFinancialTransactionRequest {
-  type: 'Receita' | 'Despesa' | 'Transferência' | 'Depósito';
+  type: FinancialTransactionType;
   category_id?: number;
   account_id: number;
   destination_account_id?: number;
