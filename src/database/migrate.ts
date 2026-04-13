@@ -6,13 +6,15 @@ import dotenv from 'dotenv';
 // Carregar variáveis de ambiente
 dotenv.config();
 
-// Criar pool direto com as credenciais
+// Usar as mesmas variáveis de ambiente do servidor (src/config/database.ts).
+// Fallback para as credenciais antigas caso as env vars não estejam presentes
+// (mantém compatibilidade com execução local sem .env).
 const pool = new Pool({
-  host: '147.93.13.174',
-  port: 5432,
-  database: 'admin',
-  user: 'alphatech',
-  password: 'T1fpOr8Kw7KQEpU781gm9NWy7#',
+  host: process.env.DB_HOST || '147.93.13.174',
+  port: Number(process.env.DB_PORT) || 5432,
+  database: process.env.DB_NAME || 'admin',
+  user: process.env.DB_USER || 'alphatech',
+  password: process.env.DB_PASSWORD || 'T1fpOr8Kw7KQEpU781gm9NWy7#',
   ssl: false
 });
 
