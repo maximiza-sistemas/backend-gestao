@@ -200,17 +200,20 @@ export class ReportModel {
       console.warn('Tabela order_payments pode não existir:', e);
     }
 
+    // Buscar Despesas da tabela unificada (financial_transactions)
     const expensesResult = await query(
       `
         SELECT
           COALESCE(s.name, 'Fornecedor não informado') AS provider,
-          p.due_date,
-          p.description AS document,
-          p.amount
-        FROM payables p
-        LEFT JOIN suppliers s ON s.id = p.supplier_id
-        WHERE p.due_date BETWEEN $1 AND $2
-        ORDER BY p.due_date DESC
+          t.due_date,
+          t.description AS document,
+          t.amount
+        FROM financial_transactions t
+        LEFT JOIN suppliers s ON s.id = t.supplier_id
+        WHERE t.transaction_date BETWEEN $1 AND $2
+          AND t.type IN ('Despesa', 'Despesas Diversas', 'Retirada pelo Proprietário')
+          AND t.status IN ('Pago', 'Efetivado', 'Concluído')
+        ORDER BY t.transaction_date DESC
       `,
       baseParams
     );
